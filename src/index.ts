@@ -86,31 +86,44 @@ const TOOLS: Tool[] = [
     },
   },
   {
-    name: "mark_as_read",
-    description: "記事を既読にマークします。",
+    name: "update_article_status",
+    description: "記事のステータスを更新します。既読マークまたは削除ができます。",
     inputSchema: {
       type: "object",
       properties: {
         article_id: {
           type: "string",
-          description: "既読にする記事のID（UUID形式）",
+          description: "記事のID（UUID形式）",
+        },
+        action: {
+          type: "string",
+          enum: ["read", "delete"],
+          description: "実行するアクション（read: 既読にする、delete: 削除する）",
         },
       },
-      required: ["article_id"],
+      required: ["article_id", "action"],
     },
   },
   {
-    name: "delete_article",
-    description: "記事を削除します。この操作は元に戻せません。",
+    name: "save_article",
+    description: "新しい記事をCuraQに保存します。URLを指定すると、AIが自動的に記事を分析してタイトル、要約、タグを生成します。",
     inputSchema: {
       type: "object",
       properties: {
-        article_id: {
+        url: {
           type: "string",
-          description: "削除する記事のID（UUID形式）",
+          description: "保存する記事のURL（必須）",
+        },
+        title: {
+          type: "string",
+          description: "記事のタイトル（オプション、省略時はAIが自動生成）",
+        },
+        markdown: {
+          type: "string",
+          description: "記事のMarkdown本文（オプション、指定すると分析精度が向上）",
         },
       },
-      required: ["article_id"],
+      required: ["url"],
     },
   },
 ];
@@ -177,29 +190,18 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           };
         }
 
-        const articlesList = articles.map((article: Article) => {
-          return `## ${article.title}
-
-**URL**: ${article.url}
-**ステータス**: ${article.status === "read" ? "既読" : "未読"}
-**読了時間**: ${article.reading_time_minutes}分
-**タグ**: ${article.tags.join(", ")}
-**コンテンツタイプ**: ${article.content_type}
-${article.priority !== undefined ? `**優先度**: ${article.priority.toFixed(3)}` : ""}
-${article.created_at ? `**保存日**: ${article.created_at ? new Date(article.created_at).toLocaleDateString("ja-JP") : "不明"}` : ""}
-
-**要約**:
-${article.summary}
-
-**記事ID**: ${article.id}
----`;
+        const articlesList = articles.map((article: Article, index: number) => {
+          return `[${index + 1}] ${article.title} (${article.reading_time_minutes}分)
+    ${article.url}
+    タグ: ${article.tags.join(", ")}
+    ID: ${article.id}`;
         });
 
         return {
           content: [
             {
               type: "text",
-              text: `# 未読記事一覧（${articles.length}件）\n\n${articlesList.join("\n\n")}`,
+              text: `未読記事一覧（${articles.length}件）\n詳細が必要な場合は get_article で記事IDを指定してください。\n\n${articlesList.join("\n\n")}`,
             },
           ],
         };
@@ -255,28 +257,18 @@ ${article.summary}
           };
         }
 
-        const resultsList = searchResults.map((article: Article) => {
-          return `## ${article.title}
-
-**URL**: ${article.url}
-**ステータス**: ${article.status === "read" ? "既読" : "未読"}
-**読了時間**: ${article.reading_time_minutes}分
-**タグ**: ${article.tags.join(", ")}
-**コンテンツタイプ**: ${article.content_type}
-${article.date ? `**日付**: ${new Date(article.date).toLocaleDateString("ja-JP")}` : ""}
-
-**要約**:
-${article.summary}
-
-**記事ID**: ${article.id}
----`;
+        const resultsList = searchResults.map((article: Article, index: number) => {
+          return `[${index + 1}] ${article.title} (${article.reading_time_minutes}分)
+    ${article.url}
+    タグ: ${article.tags.join(", ")}
+    ID: ${article.id}`;
         });
 
         return {
           content: [
             {
               type: "text",
-              text: `# 検索結果：「${query}」（${searchResults.length}件）\n\n${resultsList.join("\n\n")}`,
+              text: `検索結果：「${query}」（${searchResults.length}件）\n詳細が必要な場合は get_article で記事IDを指定してください。\n\n${resultsList.join("\n\n")}`,
             },
           ],
         };
@@ -366,29 +358,43 @@ ${events.map((e: any) => `- ${e.action} (${new Date(e.created_at).toLocaleString
         };
       }
 
-      case "mark_as_read": {
+      case "update_article_status": {
         const articleId = args?.article_id as string;
+        const action = args?.action as string;
 
-        if (!articleId) {
+        if (!articleId || !action) {
           return {
             content: [
               {
                 type: "text",
-                text: "エラー: 記事IDを指定してください",
+                text: "エラー: 記事IDとアクションを指定してください",
               },
             ],
           };
         }
 
-        const response = await fetch(
-          `${CURAQ_API_URL}/api/v1/articles/${articleId}/read`,
-          {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${CURAQ_MCP_TOKEN}`,
-            },
-          }
-        );
+        if (action !== "read" && action !== "delete") {
+          return {
+            content: [
+              {
+                type: "text",
+                text: "エラー: アクションは 'read' または 'delete' のいずれかを指定してください",
+              },
+            ],
+          };
+        }
+
+        const url = action === "read"
+          ? `${CURAQ_API_URL}/api/v1/articles/${articleId}/read`
+          : `${CURAQ_API_URL}/api/v1/articles/${articleId}`;
+        const method = action === "read" ? "POST" : "DELETE";
+
+        const response = await fetch(url, {
+          method,
+          headers: {
+            Authorization: `Bearer ${CURAQ_MCP_TOKEN}`,
+          },
+        });
 
         if (!response.ok) {
           const error = await response.text();
@@ -412,67 +418,120 @@ ${events.map((e: any) => `- ${e.action} (${new Date(e.created_at).toLocaleString
           };
         }
 
+        const message = action === "read"
+          ? `記事を既読にマークしました`
+          : `記事を削除しました`;
+
         return {
           content: [
             {
               type: "text",
-              text: `記事を既読にマークしました（ID: ${articleId}）`,
+              text: `${message}（ID: ${articleId}）`,
             },
           ],
         };
       }
 
-      case "delete_article": {
-        const articleId = args?.article_id as string;
+      case "save_article": {
+        const url = args?.url as string;
+        const title = args?.title as string | undefined;
+        const markdown = args?.markdown as string | undefined;
 
-        if (!articleId) {
+        if (!url) {
           return {
             content: [
               {
                 type: "text",
-                text: "エラー: 記事IDを指定してください",
+                text: "エラー: URLを指定してください",
               },
             ],
           };
         }
 
+        const requestBody: { url: string; title?: string; markdown?: string } = { url };
+        if (title) requestBody.title = title;
+        if (markdown) requestBody.markdown = markdown;
+
         const response = await fetch(
-          `${CURAQ_API_URL}/api/v1/articles/${articleId}`,
+          `${CURAQ_API_URL}/api/v1/articles`,
           {
-            method: "DELETE",
+            method: "POST",
             headers: {
               Authorization: `Bearer ${CURAQ_MCP_TOKEN}`,
+              "Content-Type": "application/json",
             },
+            body: JSON.stringify(requestBody),
           }
         );
 
         if (!response.ok) {
-          const error = await response.text();
-          if (response.status === 404) {
-            return {
-              content: [
-                {
-                  type: "text",
-                  text: `記事が見つかりませんでした（ID: ${articleId}）`,
-                },
-              ],
-            };
+          const errorData = await response.json().catch(() => ({ error: "unknown" })) as { error?: string; message?: string };
+
+          if (response.status === 400) {
+            if (errorData.error === "unread-limit") {
+              return {
+                content: [
+                  {
+                    type: "text",
+                    text: "エラー: 未読記事が30件に達しています。既存の記事を読むか削除してから保存してください。",
+                  },
+                ],
+              };
+            }
+            if (errorData.error === "limit-reached") {
+              return {
+                content: [
+                  {
+                    type: "text",
+                    text: "エラー: 今月の記事保存上限に達しました。",
+                  },
+                ],
+              };
+            }
+            if (errorData.error === "already-read") {
+              return {
+                content: [
+                  {
+                    type: "text",
+                    text: "この記事は既に読了済みです。",
+                  },
+                ],
+              };
+            }
+            if (errorData.error === "invalid-content") {
+              return {
+                content: [
+                  {
+                    type: "text",
+                    text: "エラー: このコンテンツは保存できません。",
+                  },
+                ],
+              };
+            }
           }
+
           return {
             content: [
               {
                 type: "text",
-                text: `エラー (${response.status}): ${error}`,
+                text: `エラー (${response.status}): ${errorData.message || errorData.error || "記事の保存に失敗しました"}`,
               },
             ],
           };
         }
+
+        const data = await response.json() as { success: boolean; message: string; articleId: string; restored?: boolean };
+        const message = data.restored
+          ? "記事を再登録しました"
+          : data.message === "記事は既に保存されています"
+          ? "記事は既に保存されています"
+          : "記事を保存しました";
 
         return {
           content: [
             {
               type: "text",
-              text: `記事を削除しました（ID: ${articleId}）`,
+              text: `${message}\n\nURL: ${url}\n記事ID: ${data.articleId}`,
             },
           ],
         };
