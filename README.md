@@ -18,7 +18,7 @@ npx @curaq/mcp-server
 
 ### 1. MCPトークンの取得
 
-1. [CuraQ](https://curaq.pages.dev)にログイン
+1. [CuraQ](https://curaq.app)にログイン
 2. 設定 > 開発者向け > MCPトークン にアクセス
 3. 新しいトークンを生成（例: "Claude Desktop"）
 4. 生成されたトークンをコピー（一度だけ表示されます）
@@ -141,7 +141,7 @@ Cursor や VSCode の MCP 設定ファイルに以下を追加します（プラ
 | 変数名 | 説明 | 必須 | デフォルト |
 |--------|------|------|-----------|
 | `CURAQ_MCP_TOKEN` | CuraQで生成したMCPトークン | ✅ 必須 | - |
-| `CURAQ_API_URL` | CuraQ APIのURL | オプション | `https://curaq.pages.dev` |
+| `CURAQ_API_URL` | CuraQ APIのURL | オプション | `https://curaq.app` |
 
 ---
 
@@ -189,7 +189,7 @@ CuraQの未読記事をリストアップして
 ### 認証エラーが発生する
 
 - `CURAQ_MCP_TOKEN` が正しいか確認してください
-- トークンが削除されていないか、[CuraQ設定ページ](https://curaq.pages.dev/settings/access-token)で確認してください
+- トークンが削除されていないか、[CuraQ設定ページ](https://curaq.app/settings/access-token)で確認してください
 
 ### 記事が取得できない
 
@@ -243,7 +243,7 @@ MIT
 
 ## リンク
 
-- [CuraQ](https://curaq.pages.dev)
+- [CuraQ](https://curaq.app)
 - [npm Package](https://www.npmjs.com/package/@curaq/mcp-server)
 
 ---
